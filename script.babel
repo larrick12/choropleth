@@ -1,0 +1,131 @@
+const Project = "choropleth data for education in usa"; //coded by Larrick follow github.com larrick12.
+
+let w = 850;
+let h = 450;
+let padding = 60;
+
+let url =
+    "https://cdn.freecodecamp.org/testable-projects-fcc/data/choropleth_map/counties.json",
+  urls =
+    "https://cdn.freecodecamp.org/testable-projects-fcc/data/choropleth_map/for_user_education.json";
+
+let svgCont = d3
+  .select(".svgcont")
+  .append("svg")
+  .attr("width", w + 150)
+  .attr("height", h + 250);
+
+let overlay = d3
+  .select(".svgcont")
+  .append("div")
+  .attr("class", "tooltip")
+  .attr("id", "tooltip")
+  .style("opacity", 0);
+
+let thresh = d3
+  .scaleThreshold()
+  .domain(d3.range(2.6, 75.1, (75.1 - 2.6) / 8))
+  .range(d3.schemeGreens[9]);
+
+let legend = d3.scaleLinear().domain([2.6, 75.1]).range([0, 250]);
+
+let legendX = d3
+  .axisBottom(legend)
+  .tickFormat((d) => Math.round(d) + "%")
+  .tickValues(thresh.domain())
+  .tickSize(9);
+
+let g = svgCont
+  .append("g")
+  .call(legendX)
+  .attr("class", "legend")
+  .attr("id", "legend")
+  .attr("transform", `translate(${w - 300},` + 50 + ")");
+
+g.selectAll("rect")
+
+  .data(
+    thresh.range().map((item) => {
+      let d = thresh.invertExtent(item);
+      if (d[0] == null) d[0] = legend()[0];
+      if (d[1] == null) d[1] = legend()[1];
+      return d;
+    })
+  )
+  .enter()
+  .append("rect")
+
+  .attr("x", (d) => legend(d[0]))
+  .attr("width", (d) => legend(d[1]) - legend(d[0]) + 32)
+  .attr("y", -8)
+  .attr("height", 8)
+  .attr("fill", (d) => thresh(d[0]));
+
+d3.queue()
+  .defer(d3.json, url)
+  .defer(d3.json, urls)
+  .await((err, data, education) => {
+    if (err) return console.error(err);
+    svgCont
+      .append("g")
+      .attr("class", "counties")
+      .selectAll("path")
+      .data(topojson.feature(data, data.objects.counties).features)
+      .enter()
+      .append("path")
+      .attr("class", "county")
+      .attr("d", d3.geoPath())
+      .attr("data-fips", (d) => d.id)
+      .attr("data-education", (d) => {
+        let val = education.filter((e) => {
+          return e.fips == d.id;
+        });
+        if (val[0]) {
+          return val[0].bachelorsOrHigher;
+        }
+      })
+      .attr("fill", (d) => {
+        let res = education.filter(function (e) {
+          return e.fips == d.id;
+        });
+        if (res[0]) return thresh(res[0].bachelorsOrHigher);
+      })
+      .on("mouseover", (d) => {
+        let f = education.filter(function (e) {
+          return e.fips == d.id;
+        });
+
+        overlay.style("opacity", 0.9);
+
+        overlay
+          .html(
+            "<span class='names'>" +
+              f[0]["area_name"] +
+              ", " +
+              f[0]["state"] +
+              ": " +
+              f[0].bachelorsOrHigher +
+              "%" +
+              "</span>"
+          )
+          .style("left", d3.event.pageX - 125 + "px")
+          .style("top", d3.event.pageY - 110 + "px")
+          .attr("data-education", f[0].bachelorsOrHigher);
+      })
+      .on("mouseout", (d) => {
+        overlay.style("opacity", 0);
+      });
+    svgCont
+      .append("path")
+      .datum(
+        topojson.mesh(data, data.objects.states, (a, b) => {
+          return a !== b;
+        })
+      )
+      .attr("class", "states")
+      .attr("d", d3.geoPath())
+      .append("text")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 18 + "px")
+      .text((d) => d.state);
+  });
